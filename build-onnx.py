@@ -135,33 +135,29 @@ def export_to_onnx(
     model: nn.Module,
     output_path: str,
     input_size: int,
-    opset_version: int = 17,
     dynamic_batch: bool = True,
 ):
-    """Export PyTorch model to ONNX format."""
+    """Export PyTorch model to ONNX format using PyTorch 2.5+ dynamo exporter."""
 
-    # Create dummy input
-    dummy_input = torch.randn(1, 3, input_size, input_size)
+    # Create example input as tuple (required for dynamo export)
+    example_inputs = (torch.randn(1, 3, input_size, input_size),)
 
-    # Define dynamic axes for batch size
-    dynamic_axes = None
+    # Define dynamic shapes for batch size
+    dynamic_shapes = None
     if dynamic_batch:
-        dynamic_axes = {
-            "input": {0: "batch_size"},
-            "embedding": {0: "batch_size"},
-        }
+        batch_dim = torch.export.Dim("batch_size", min=1, max=128)
+        dynamic_shapes = {"x": {0: batch_dim}}
 
-    print(f"Exporting to ONNX: {output_path}")
-    torch.onnx.export(
+    print(f"Exporting to ONNX using dynamo=True: {output_path}")
+    onnx_program = torch.onnx.export(
         model,
-        dummy_input,
-        output_path,
+        example_inputs,
+        dynamo=True,
         input_names=["input"],
         output_names=["embedding"],
-        dynamic_axes=dynamic_axes,
-        opset_version=opset_version,
-        do_constant_folding=True,
+        dynamic_shapes=dynamic_shapes,
     )
+    onnx_program.save(output_path)
     print(f"ONNX model saved to: {output_path}")
 
 
@@ -225,12 +221,6 @@ def main():
         help="Disable L2 normalization of output embeddings",
     )
     parser.add_argument(
-        "--opset-version",
-        type=int,
-        default=17,
-        help="ONNX opset version (default: 17)",
-    )
-    parser.add_argument(
         "--static-batch",
         action="store_true",
         help="Use static batch size instead of dynamic",
@@ -254,12 +244,11 @@ def main():
     print(f"GEM eval_p: {args.eval_p}")
     print(f"L2 normalize: {l2_normalize}")
 
-    # Export to ONNX
+    # Export to ONNX using PyTorch 2.5+ dynamo exporter
     export_to_onnx(
         model=model,
         output_path=args.output,
         input_size=input_size,
-        opset_version=args.opset_version,
         dynamic_batch=not args.static_batch,
     )
 
