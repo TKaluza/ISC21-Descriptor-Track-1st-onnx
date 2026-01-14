@@ -113,6 +113,8 @@ venv.bak/
 *.npy
 *.tar
 *.bak
+*.onnx
+*.onnx.data
 
 input
 output
